@@ -84,19 +84,6 @@ After a successful deployment (`apply`), use the following steps to verify the c
     docker pull nginx:latest
     docker tag nginx:latest <acr_login_server>/frontend:dev
     ```
-3.  **Test MySQL connection:** Test the connection to MySQL database
-
-    ```bash
-    kubectl run mysql-test --rm -it --image=mysql:8.0 --restart=Never -- bash 
-    
-    # Run the following command inside the MySQL prompt
-    mysql -h <mysql_fqdn> -u adminuser -p
-
-    # Once prompted, supply the password: DevStrongPassword123!
-
-    # Once inside the database, RUN:
-     SHOW DATABASES;
-    ```
 
 4.  **Login to ACR:** Authenticate to the Azure Container Registry (ACR) to confirm identity access.
 
@@ -115,6 +102,19 @@ After a successful deployment (`apply`), use the following steps to verify the c
     ```bash
     az acr repository list --name <acr_name> --output table
     az acr repository show-tags --name <acr_name> --repository frontend --output table
+    ```
+7.  **Test MySQL connection:** Test the connection to MySQL database
+
+    ```bash
+    kubectl run mysql-test --rm -it --image=mysql:8.0 --restart=Never -- bash 
+    
+    # Run the following command inside the MySQL prompt
+    mysql -h <mysql_fqdn> -u adminuser -p
+
+    # Once prompted, supply the password: DevStrongPassword123!
+
+    # Once inside the database, RUN:
+     SHOW DATABASES;
     ```
 
 ### 5.1. Deploy Application Using kubectl CLI

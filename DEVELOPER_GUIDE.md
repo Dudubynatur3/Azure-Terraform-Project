@@ -59,7 +59,7 @@ This section details the commands for initializing and deploying the **Dev** env
 3.  **Apply Deployment:** Execute the deployment.
 
     ```bash
-    ./scripts/terraform.sh apply
+    ./scripts/terraform.sh apply -auto-approve
     ```
 
 > ⚙️ **The wrapper script automatically picks the correct variable file (`envs/dev/terraform.tfvars`), so no variable prompts are required.**
@@ -101,10 +101,8 @@ To manage container images, developers need to authenticate with the Azure Conta
 
     ```bash
     # Pull the frontend image
-    docker pull cloudprojdevacr.azurecr.io/frontend:dev
+    docker pull <mysql_fqdn>/frontend:dev
 
-    # Pull the backend image
-    docker pull cloudprojdevacr.azurecr.io/backend:dev
     ```
 
 > 🔒 **Push permissions (for deploying new images) are strictly controlled via Azure AD Role-Based Access Control (RBAC).**
@@ -117,11 +115,19 @@ Access to the Azure MySQL Flexible Server is highly restricted, leveraging a sec
 * **Access Control:** Developers can only connect from **whitelisted IPs**. In the Dev environment, this often means your workstation's IP or a designated jump host IP must be explicitly allowed in the NSG rules for the `database subnet`.
 * **Security:** Database credentials (`username`, `password`) are stored securely in **Azure Key Vault** and should be read dynamically for connection (e.g., using a small script or retrieving them manually for client setup).
 
-#### Example Connection:
+#### Test MySQL Connection:
 
 ```bash
 # Connect using the FQDN retrieved from deployment outputs
-mysql -h <mysql_fqdn> -u <username> -p
+kubectl run mysql-test --rm -it --image=mysql:8.0 --restart=Never -- bash 
+    
+    # Run the following command inside the MySQL prompt
+    mysql -h <mysql_fqdn> -u adminuser -p
+
+    # Once prompted, supply the password: DevStrongPassword123!
+
+    # Once inside the database, RUN:
+     SHOW DATABASES;
 ```
 
 ### 7. Stage / Production Workflow 🚀
@@ -136,7 +142,7 @@ The **Stage** and **Production** environments are exclusively managed by automat
 ```bash
 terraform workspace select stage || terraform workspace new stage
 ./scripts/terraform.sh plan
-./scripts/terraform.sh apply
+./scripts/terraform.sh apply -auto-approve
 ```
 
 #### Deploy Production
@@ -144,7 +150,7 @@ terraform workspace select stage || terraform workspace new stage
 ```bash
 terraform workspace select prod || terraform workspace new prod
 ./scripts/terraform.sh plan
-./scripts/terraform.sh apply
+./scripts/terraform.sh apply -auto-approve
 ```
 
 ⚙️ The wrapper scripts automatically use the correct variable files (envs/stage/terraform.tfvars or envs/prod/terraform.tfvars), ensuring consistency and safety across production environments.
