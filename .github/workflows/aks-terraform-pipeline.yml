@@ -33,15 +33,18 @@ jobs:
         id: checkov
         uses: bridgecrewio/checkov-action@v14
         with:
+          # pass args to the checkov CLI to produce both JSON and junit XML outputs
           args: >
             --directory . --framework terraform
             -o json --output-file-path checkov-report.json
             -o junitxml --output-file-path checkov-report.xml
+        # allow the step to complete so we can parse output and always upload artifacts
         continue-on-error: true
 
       - name: Parse Checkov JSON for HIGH/CRITICAL
         id: parse
         run: |
+          # default to zero if file missing
           if [ -f checkov-report.json ]; then
             HIGH_COUNT=$(jq '[.results.failed_checks[] | select(.severity=="HIGH" or .severity=="CRITICAL")] | length' checkov-report.json)
           else
@@ -110,5 +113,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ... existing terraform steps go here (plan/apply)
       - name: Placeholder - Terraform steps
         run: echo "Add your Terraform plan/apply steps here"
