@@ -1,0 +1,27 @@
+# Checkov Configuration for AKS Terraform Project
+
+directory:
+  - modules/
+  - envs/
+
+framework:
+  - terraform
+
+skip-path:
+  - .terraform/
+  - .git/
+  - scripts/
+
+skip-check: []
+
+soft-fail: false
+compact: true
+quiet: false
+
+output:
+  - cli
+  - junitxml
+
+enable-secret-scan: true
+download-external-modules: true
+parallel: true

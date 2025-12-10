@@ -1,30 +1,121 @@
 name: AKS Terraform Pipeline
 
 on: 
-    push:
-        branches:
-        - main
-    pull_request:
-        branches:
-        - main
-    workflow_dispatch:
-        inputs:
-            environment:
-                description: 'Deployment Environment'
-                required: true
-                type: choice
-                options:
-                    - dev
-                    - stage 
-                    - prod
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment Environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - stage 
+          - prod
 
 env:
-    TF_VERSION: '1.7.5'
-    AZURE_REGION: 'australiacentral'
+  TF_VERSION: '1.7.5'
+  AZURE_REGION: 'australiacentral'
 
 jobs:
-    terraform:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+  # Security Scanning Job - NEW
+  security-scan:
+    name: Security Scan with Checkov
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Checkov
+        run: |
+          pip install checkov
+          checkov --version
+
+      - name: Run Checkov security scan
+        id: checkov
+        run: |
+          checkov --directory . \
+            --framework terraform \
+            --output cli \
+            --output junitxml \
+            --output-file-path console,checkov-report.xml \
+            --soft-fail \
+            --compact \
+            --skip-suppressions-file .checkov.baseline.yml
+        continue-on-error: true
+
+      - name: Check for HIGH/CRITICAL findings
+        run: |
+          if checkov --directory . \
+            --framework terraform \
+            --check HIGH,CRITICAL \
+            --compact \
+            --quiet \
+            --skip-suppressions-file .checkov.baseline.yml; then
+            echo "✅ No HIGH or CRITICAL security issues found"
+          else
+            echo "❌ HIGH or CRITICAL security issues detected!"
+            echo "Please review the Checkov report and fix the issues"
+            exit 1
+          fi
+
+      - name: Upload Checkov report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: checkov-security-report
+          path: checkov-report.xml
+          retention-days: 30
+
+      - name: Comment PR with scan results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const scanStatus = '${{ steps.checkov.outcome }}';
+            const emoji = scanStatus === 'success' ? '✅' : '⚠️';
+            
+            const comment = `## ${emoji} Security Scan Results
+            
+            **Status:** ${scanStatus === 'success' ? 'Passed' : 'Issues Found'}
+            
+            Checkov has completed scanning your Terraform code for security vulnerabilities.
+            
+            📊 [View detailed security report in artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            ${scanStatus !== 'success' ? '⚠️ **Action Required:** Please review and address HIGH/CRITICAL findings before merging.' : ''}
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  # Existing Terraform Job - UPDATED
+  terraform:
+    name: Terraform Plan/Apply
+    runs-on: ubuntu-latest
+    needs: security-scan  # Only run after security scan passes
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # Add your existing terraform steps here
+      # (keep any additional steps that were in the original file)
