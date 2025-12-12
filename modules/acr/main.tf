@@ -6,8 +6,12 @@ resource "azurerm_container_registry" "acr" {
   admin_enabled                 = false
   public_network_access_enabled = !var.enable_private_endpoint
 
-  network_rule_set {
-    default_action = var.enable_private_endpoint ? "Deny" : "Allow"
+  # network_rule_set is only supported for Premium SKU
+  dynamic "network_rule_set" {
+    for_each = var.acr_sku == "Premium" ? [1] : []
+    content {
+      default_action = var.enable_private_endpoint ? "Deny" : "Allow"
+    }
   }
 
   dynamic "georeplications" {
