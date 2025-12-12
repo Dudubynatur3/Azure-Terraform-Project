@@ -202,7 +202,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'app-deployment.yml',
-              ref: 'main',
+              ref: context.ref,
               inputs: {
                 environment: '${{ steps.set-env.outputs.environment }}',
                 run_id: '${{ github.run_id }}',
