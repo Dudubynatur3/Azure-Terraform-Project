@@ -6,7 +6,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   resource_group_name     = var.resource_group_name
   dns_prefix              = "${var.project_name}-${var.environment}-aks"
   private_cluster_enabled = var.enable_private_cluster
-  local_account_disabled  = true
+  local_account_disabled  = false # Enable local accounts for CI/CD access
 
   default_node_pool {
     name                         = "default"
