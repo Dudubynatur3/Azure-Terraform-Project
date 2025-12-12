@@ -42,3 +42,11 @@ resource "azurerm_kubernetes_cluster" "aks" {
     project     = var.project_name
   }
 }
+
+# Grant Azure Kubernetes Service Cluster Admin Role to the current user/service principal
+# This allows CI/CD pipelines to manage the cluster
+resource "azurerm_role_assignment" "aks_admin" {
+  scope                = azurerm_kubernetes_cluster.aks.id
+  role_definition_name = "Azure Kubernetes Service Cluster Admin Role"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
