@@ -336,6 +336,34 @@ jobs:
           
           echo "✅ Backend deployed"
       
+      - name: Debug Backend Deployment
+        if: always()
+        run: |
+          echo "🔍 Backend Pod Status:"
+          kubectl get pods -l component=backend -o wide
+          
+          echo ""
+          echo "📋 Backend Pod Events:"
+          kubectl get events --field-selector involvedObject.kind=Pod --sort-by='.lastTimestamp' | grep backend || echo "No backend events found"
+          
+          echo ""
+          echo "📜 Backend Pod Logs (first 3 pods):"
+          PODS=$(kubectl get pod -l component=backend -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | head -3)
+          for POD in $PODS; do
+            echo ""
+            echo "=== Logs from $POD ==="
+            kubectl logs $POD --tail=50 || echo "Failed to get logs from $POD"
+          done
+          
+          echo ""
+          echo "🔍 Backend Pod Descriptions (first pod):"
+          FIRST_POD=$(kubectl get pod -l component=backend -o jsonpath='{.items[0].metadata.name}')
+          kubectl describe pod $FIRST_POD | tail -80
+          
+          echo ""
+          echo "📋 ConfigMap Values:"
+          kubectl get configmap book-review-config -o yaml | grep -A 5 "data:"
+      
       - name: Deploy Frontend
         run: |
           kubectl apply -f ${{ env.K8S_PATH }}/deployments/frontend-deployment.yaml
