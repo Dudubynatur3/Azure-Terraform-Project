@@ -184,13 +184,45 @@ jobs:
           echo "resource_group_name=$(terraform output -raw resource_group_name)" >> $GITHUB_OUTPUT
       
       - name: Attach ACR to AKS
+        continue-on-error: true
+        id: attach-acr
         run: |
-          echo "🔗 Attaching ACR to AKS cluster..."
-          az aks update \
+          echo "🔗 Attempting to attach ACR to AKS cluster..."
+          if az aks update \
             --name ${{ steps.tf-outputs.outputs.aks_cluster_name }} \
             --resource-group ${{ steps.tf-outputs.outputs.resource_group_name }} \
-            --attach-acr ${{ steps.tf-outputs.outputs.acr_name }}
-          echo "✅ ACR successfully attached to AKS"
+            --attach-acr ${{ steps.tf-outputs.outputs.acr_name }}; then
+            echo "✅ ACR successfully attached to AKS"
+            echo "success=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Could not attach ACR automatically (requires Owner permissions)"
+            echo "success=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+      
+      - name: ACR Manual Setup Instructions
+        if: steps.attach-acr.outputs.success == 'false'
+        run: |
+          echo "⚠️ =========================================="
+          echo "⚠️  MANUAL STEP REQUIRED"
+          echo "⚠️ =========================================="
+          echo ""
+          echo "The service principal lacks permissions to attach ACR to AKS."
+          echo "Please run ONE of these commands manually:"
+          echo ""
+          echo "Option 1 - Using Azure CLI:"
+          echo "  az aks update \\"
+          echo "    --name ${{ steps.tf-outputs.outputs.aks_cluster_name }} \\"
+          echo "    --resource-group ${{ steps.tf-outputs.outputs.resource_group_name }} \\"
+          echo "    --attach-acr ${{ steps.tf-outputs.outputs.acr_name }}"
+          echo ""
+          echo "Option 2 - Via Azure Portal:"
+          echo "  1. Go to ACR: ${{ steps.tf-outputs.outputs.acr_name }}"
+          echo "  2. Access Control (IAM) → Add role assignment"
+          echo "  3. Role: AcrPull"
+          echo "  4. Assign to: ${{ steps.tf-outputs.outputs.aks_cluster_name }}-agentpool managed identity"
+          echo ""
+          echo "⚠️ =========================================="
       
       - name: Upload Terraform State Info
         uses: actions/upload-artifact@v4
