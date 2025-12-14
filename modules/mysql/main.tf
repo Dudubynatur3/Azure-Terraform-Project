@@ -4,17 +4,21 @@ resource "azurerm_mysql_flexible_server" "mysql" {
   resource_group_name    = var.resource_group_name
   administrator_login    = var.mysql_admin_username
   administrator_password = var.mysql_admin_password
-  # Use a provider-compatible MySQL version and SKU. Adjust `mysql_sku_name` in
-  # `variables.tf` if you need a different SKU.
-  version  = "8.0.21"
-  sku_name = var.mysql_sku_name
-
+  version                = "8.0.21"
+  sku_name               = var.mysql_sku_name
 
   backup_retention_days        = 7
   geo_redundant_backup_enabled = false
+}
 
-  # `public_network_access_enabled` is managed by the provider and cannot be set
-  # directly in some provider versions, so remove explicit configuration.
+# Firewall rule to allow Azure services (when not using private endpoint)
+resource "azurerm_mysql_flexible_server_firewall_rule" "allow_azure_services" {
+  count               = var.enable_private_endpoint ? 0 : 1
+  name                = "AllowAzureServices"
+  resource_group_name = var.resource_group_name
+  server_name         = azurerm_mysql_flexible_server.mysql.name
+  start_ip_address    = "0.0.0.0"
+  end_ip_address      = "0.0.0.0"
 }
 
 # Private DNS Zone for MySQL Private Link
