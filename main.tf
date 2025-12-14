@@ -18,7 +18,6 @@ module "aks" {
   subnet_ids             = module.network.subnet_ids
   resource_group_name    = module.network.resource_group_name
   enable_private_cluster = var.enable_private_aks_cluster
-  acr_id                 = module.acr.acr_id
 }
 
 module "mysql" {
@@ -59,4 +58,12 @@ module "keyvault" {
   private_subnet_id       = lookup(module.network.subnet_ids, "aks", "")
   enable_private_endpoint = var.create_private_endpoints
   allowed_ip_ranges       = [] # Empty list for now, can be configured per environment
+}
+
+# Grant AKS managed identity permission to pull images from ACR
+resource "azurerm_role_assignment" "aks_acr_pull" {
+  scope                            = module.acr.acr_id
+  role_definition_name             = "AcrPull"
+  principal_id                     = module.aks.kubelet_identity_object_id
+  skip_service_principal_aad_check = true
 }
