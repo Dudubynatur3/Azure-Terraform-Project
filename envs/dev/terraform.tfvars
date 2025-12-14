@@ -26,6 +26,9 @@ mysql_admin_password = "DevStrongPassword123!"
 create_private_endpoints   = false
 enable_private_aks_cluster = false
 
+# ACR Integration - Automatically attach ACR to AKS
+create_acr_role_assignment = true  # Enabled - service principal now has User Access Administrator role
+
 # Optional: Override ACR SKU (default is "Standard"; use "Premium" for geo-replication)
 # acr_sku = "Standard"
 
