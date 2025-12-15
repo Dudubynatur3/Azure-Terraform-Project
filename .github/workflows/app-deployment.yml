@@ -551,6 +551,65 @@ jobs:
           
           echo "✅ Frontend deployment applied"
       
+      - name: Deploy Ingress
+        run: |
+          echo "🌐 Deploying Ingress resource..."
+          kubectl apply -f ${{ env.K8S_PATH }}/ingress.yaml
+          echo "✅ Ingress resource applied"
+          
+      - name: Wait for Ingress IP Assignment
+        id: ingress-ip
+        run: |
+          echo "⏳ Waiting for Ingress Controller to assign external IP..."
+          
+          for i in {1..30}; do
+            INGRESS_IP=$(kubectl get ingress book-review-ingress -n book-review-dev -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            
+            if [ -n "$INGRESS_IP" ] && [ "$INGRESS_IP" != "null" ]; then
+              echo "✅ Ingress External IP assigned: $INGRESS_IP"
+              echo "ingress_ip=$INGRESS_IP" >> $GITHUB_OUTPUT
+              echo "ip_assigned=true" >> $GITHUB_OUTPUT
+              break
+            fi
+            
+            echo "Attempt $i/30: Waiting for IP assignment..."
+            sleep 10
+          done
+          
+          if [ -z "$INGRESS_IP" ] || [ "$INGRESS_IP" == "null" ]; then
+            echo "⚠️ Ingress IP not yet assigned after 5 minutes"
+            echo "ip_assigned=false" >> $GITHUB_OUTPUT
+            echo "ingress_ip=pending" >> $GITHUB_OUTPUT
+          fi
+          
+          echo ""
+          echo "📋 Ingress Status:"
+          kubectl get ingress -n book-review-dev
+          kubectl describe ingress book-review-ingress -n book-review-dev
+      
+      - name: Update CORS Origins with Ingress IP
+        if: steps.ingress-ip.outputs.ip_assigned == 'true'
+        run: |
+          INGRESS_IP="${{ steps.ingress-ip.outputs.ingress_ip }}"
+          
+          echo "🔄 Updating ALLOWED_ORIGINS with Ingress IP: $INGRESS_IP"
+          
+          # Get current ConfigMap
+          kubectl get configmap book-review-config -n book-review-dev -o yaml > /tmp/configmap.yaml
+          
+          # Update allowed_origins to include Ingress IP
+          sed -i "s|allowed_origins: .*|allowed_origins: \"http://$INGRESS_IP,http://localhost:3000\"|g" /tmp/configmap.yaml
+          
+          # Apply updated ConfigMap
+          kubectl apply -f /tmp/configmap.yaml
+          
+          echo "✅ ALLOWED_ORIGINS updated to include http://$INGRESS_IP"
+          
+          # Restart backend to pick up new config
+          kubectl rollout restart deployment/book-review-backend -n book-review-dev
+          
+          echo "🔄 Backend restarted to apply new CORS configuration"
+      
       - name: Debug Frontend Issues
         if: always()
         run: |
@@ -573,44 +632,100 @@ jobs:
           echo "📋 Frontend Pod Events:"
           kubectl get events --field-selector involvedObject.name!='' | grep frontend || echo "No frontend events"
       
-      - name: Get Application URL
+      - name: Verify Application Health
+        if: steps.ingress-ip.outputs.ip_assigned == 'true'
         run: |
-          echo "⏳ Waiting for LoadBalancer IP assignment (this may take 2-3 minutes)..."
+          INGRESS_IP="${{ steps.ingress-ip.outputs.ingress_ip }}"
           
-          # Wait for external IP
-          for i in {1..30}; do
-            EXTERNAL_IP=$(kubectl get svc book-review-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-            if [ -n "$EXTERNAL_IP" ]; then
-              echo "✅ Application deployed successfully!"
-              echo "🌐 Frontend URL: http://$EXTERNAL_IP"
-              echo "📝 Backend URL (internal): http://book-review-backend:8080"
-              break
-            fi
-            echo "Attempt $i/30: Still waiting for external IP..."
-            sleep 10
-          done
+          echo "🔍 Verifying application health via Ingress..."
+          echo ""
           
-          if [ -z "$EXTERNAL_IP" ]; then
-            echo "⚠️ External IP not yet assigned. Check status with: kubectl get svc book-review-frontend"
+          # Test frontend through Ingress
+          echo "Testing frontend access..."
+          if kubectl run test-frontend-health --rm -i --restart=Never --image=curlimages/curl -n book-review-dev -- \
+            curl -s -o /dev/null -w "%{http_code}" http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/ | grep -q "200"; then
+            echo "✅ Frontend is healthy"
+          else
+            echo "⚠️ Frontend health check inconclusive"
           fi
+          
+          # Test backend API through Ingress
+          echo "Testing backend API access..."
+          if kubectl run test-backend-health --rm -i --restart=Never --image=curlimages/curl -n book-review-dev -- \
+            curl -s http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/api/books | grep -q "title"; then
+            echo "✅ Backend API is healthy"
+          else
+            echo "⚠️ Backend API health check inconclusive"
+          fi
+          
+          echo ""
+          echo "✅ Application deployed successfully!"
+          echo "🌐 Application URL: http://$INGRESS_IP"
+          echo "🔗 Backend API: http://$INGRESS_IP/api"
       
       - name: Deployment Summary
         run: |
-          echo "📊 Deployment Summary"
-          echo "===================="
+          INGRESS_IP="${{ steps.ingress-ip.outputs.ingress_ip }}"
+          NAMESPACE="book-review-${{ github.event.inputs.environment }}"
+          
+          # Generate GitHub Actions Step Summary
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## ✨ Deployment Complete - ${{ github.event.inputs.environment }}
+          
+          ### 🌐 Application Access
+          - **Frontend**: http://$INGRESS_IP
+          - **Backend API**: http://$INGRESS_IP/api
+          - **Ingress Controller**: NGINX Ingress v1.8.2
+          - **Namespace**: $NAMESPACE
+          
+          ### 📦 Deployed Images
+          - **Backend**: \`${{ needs.build-and-push-images.outputs.backend-image }}\`
+          - **Frontend**: \`${{ needs.build-and-push-images.outputs.frontend-image }}\`
+          
+          ### 📊 Resource Status
+          #### Pods
+          \`\`\`
+          $(kubectl get pods -n $NAMESPACE -o wide)
+          \`\`\`
+          
+          #### Services
+          \`\`\`
+          $(kubectl get svc -n $NAMESPACE)
+          \`\`\`
+          
+          #### Ingress
+          \`\`\`
+          $(kubectl get ingress -n $NAMESPACE)
+          \`\`\`
+          
+          ### 🔧 Useful Commands
+          \`\`\`bash
+          # View application logs
+          kubectl logs -n $NAMESPACE -l component=frontend --tail=50
+          kubectl logs -n $NAMESPACE -l component=backend --tail=50
+          
+          # Check Ingress status
+          kubectl describe ingress book-review-ingress -n $NAMESPACE
+          
+          # Port-forward for local testing
+          kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80
+          
+          # Get kubeconfig
+          az aks get-credentials --resource-group ${{ needs.build-and-push-images.outputs.resource-group }} \\
+            --name ${{ needs.build-and-push-images.outputs.aks-cluster-name }}
+          \`\`\`
+          
+          ### ⚠️ External Access Note
+          If the external IP is not accessible from your browser, verify NSG rules in the Azure Portal for the node resource group (MC_*) allow inbound traffic on ports 80, 443.
+          
+          EOF
+          
+          echo "════════════════════════════════════════════════════════════"
+          echo "✨ DEPLOYMENT COMPLETE - ${{ github.event.inputs.environment }}"
+          echo "════════════════════════════════════════════════════════════"
+          echo "🌐 Application URL: http://$INGRESS_IP"
+          echo "🔗 Backend API: http://$INGRESS_IP/api"
+          echo "📦 Namespace: $NAMESPACE"
           echo ""
-          echo "Environment: ${{ github.event.inputs.environment }}"
-          echo "Namespace: book-review-${{ github.event.inputs.environment }}"
-          echo ""
-          echo "📦 Deployed Images:"
-          echo "  Backend:  ${{ needs.build-and-push-images.outputs.backend-image }}"
-          echo "  Frontend: ${{ needs.build-and-push-images.outputs.frontend-image }}"
-          echo ""
-          echo "🎯 Resources:"
-          kubectl get all -l app=book-review
-          echo ""
-          echo "🔍 Pod Status:"
-          kubectl get pods -l app=book-review -o wide
-          echo ""
-          echo "🌐 Services:"
-          kubectl get svc -l app=book-review
+          echo "📊 View detailed summary in the GitHub Actions job summary above"
+          echo "════════════════════════════════════════════════════════════"

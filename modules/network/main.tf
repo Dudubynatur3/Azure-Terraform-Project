@@ -128,6 +128,25 @@ resource "azurerm_network_security_rule" "aks_allow_https" {
   resource_group_name         = azurerm_resource_group.rg.name
 }
 
+# Allow all Internet traffic to AKS nodes for LoadBalancer services
+# This rule ensures Azure LoadBalancer services (type: LoadBalancer) can receive external traffic
+resource "azurerm_network_security_rule" "aks_allow_loadbalancer_traffic" {
+  count                   = contains(keys(var.subnets), "aks") ? 1 : 0
+  name                    = "${var.project_name}-${var.environment}-aks-allow-lb-traffic"
+  priority                = 117
+  direction               = "Inbound"
+  access                  = "Allow"
+  protocol                = "Tcp"
+  source_port_range       = "*"
+  destination_port_ranges = ["80", "443", "30000-32767"] # HTTP, HTTPS, and NodePort range
+
+  source_address_prefix      = "Internet"
+  destination_address_prefix = azurerm_subnet.subnets["aks"].address_prefixes[0]
+
+  network_security_group_name = azurerm_network_security_group.nsgs["aks"].name
+  resource_group_name         = azurerm_resource_group.rg.name
+}
+
 resource "azurerm_network_security_rule" "aks_deny_internet" {
   count                  = contains(keys(var.subnets), "aks") ? 1 : 0
   name                   = "${var.project_name}-${var.environment}-aks-deny-internet"

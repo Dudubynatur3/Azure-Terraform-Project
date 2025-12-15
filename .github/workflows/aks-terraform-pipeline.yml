@@ -233,6 +233,73 @@ jobs:
             terraform.tfstate
           retention-days: 7
       
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.32.0'
+      
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ steps.tf-outputs.outputs.resource_group_name }} \
+            --name ${{ steps.tf-outputs.outputs.aks_cluster_name }} \
+            --admin \
+            --overwrite-existing
+      
+      - name: Install NGINX Ingress Controller
+        run: |
+          echo "📦 Installing NGINX Ingress Controller..."
+          
+          # Check if already installed
+          if kubectl get namespace ingress-nginx &>/dev/null; then
+            echo "⚠️ NGINX Ingress Controller namespace already exists"
+            echo "🔄 Checking deployment status..."
+            kubectl get pods -n ingress-nginx
+          else
+            echo "🚀 Installing NGINX Ingress Controller..."
+            kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/cloud/deploy.yaml
+          fi
+          
+          # Wait for the controller to be ready
+          echo "⏳ Waiting for Ingress Controller to be ready..."
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=300s || true
+          
+          echo "✅ Checking Ingress Controller status..."
+          kubectl get pods -n ingress-nginx
+          kubectl get svc -n ingress-nginx ingress-nginx-controller
+      
+      - name: Get Ingress External IP
+        id: ingress-ip
+        run: |
+          echo "⏳ Waiting for LoadBalancer IP assignment..."
+          for i in {1..30}; do
+            EXTERNAL_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ -n "$EXTERNAL_IP" ] && [ "$EXTERNAL_IP" != "null" ]; then
+              echo "✅ Ingress Controller External IP: $EXTERNAL_IP"
+              echo "ingress_ip=$EXTERNAL_IP" >> $GITHUB_OUTPUT
+              break
+            fi
+            echo "Waiting for IP assignment... (attempt $i/30)"
+            sleep 10
+          done
+          
+          if [ -z "$EXTERNAL_IP" ] || [ "$EXTERNAL_IP" == "null" ]; then
+            echo "⚠️ LoadBalancer IP not yet assigned. It may take a few more minutes."
+            echo "ingress_ip=pending" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create Ingress Summary
+        if: steps.ingress-ip.outputs.ingress_ip != 'pending'
+        run: |
+          echo "## 🌐 Ingress Controller Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**External IP:** \`${{ steps.ingress-ip.outputs.ingress_ip }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Access your applications via this IP once Ingress resources are created." >> $GITHUB_STEP_SUMMARY
+      
       - name: Trigger Application Deployment
         if: success()
         continue-on-error: true

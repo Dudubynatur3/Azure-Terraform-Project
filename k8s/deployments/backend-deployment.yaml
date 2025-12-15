@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: book-review-backend
+  namespace: book-review-dev
   labels:
     app: book-review
     component: backend
@@ -22,7 +23,7 @@ spec:
         image: <ACR_NAME>.azurecr.io/book-review-backend:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 8080
+        - containerPort: 3001
           name: http
         env:
         - name: DB_HOST
@@ -56,9 +57,17 @@ spec:
               name: book-review-secrets
               key: jwt_secret
         - name: PORT
-          value: "8080"
+          value: "3001"
+
         - name: DB_DIALECT
           value: "mysql"
+        - name: NODE_ENV
+          value: "production"
+        - name: ALLOWED_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: book-review-config
+              key: allowed_origins
         resources:
           requests:
             memory: "256Mi"
@@ -69,7 +78,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /
-            port: 8080
+            port: 3001
           initialDelaySeconds: 60
           periodSeconds: 20
           timeoutSeconds: 5
@@ -77,7 +86,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /
-            port: 8080
+            port: 3001
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5

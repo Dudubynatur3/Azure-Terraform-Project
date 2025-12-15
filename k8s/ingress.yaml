@@ -1,0 +1,54 @@
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: book-review-ingress
+#   namespace: book-review-dev
+#   annotations:
+#     nginx.ingress.kubernetes.io/use-regex: "true"
+#     nginx.ingress.kubernetes.io/rewrite-target: /api/$2
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#   - http:
+#       paths:
+#       - path: /api(/|$)(.*)
+#         pathType: ImplementationSpecific
+#         backend:
+#           service:
+#             name: book-review-backend
+#             port:
+#               number: 8080
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: book-review-frontend
+#             port:
+#               number: 80
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: book-review-ingress
+  namespace: book-review-dev
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: book-review-backend
+                port:
+                  number: 3001
+          - path: /(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: book-review-frontend
+                port:
+                  number: 3000
