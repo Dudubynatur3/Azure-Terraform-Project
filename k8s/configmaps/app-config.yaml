@@ -10,7 +10,7 @@ data:
   backend_api_url: "/api"
   
   # Database configuration (non-sensitive)
-  database_host: "<MYSQL_FQDN>"
+  database_host: "<MYSQL_FQDN>"  # will be replaced at runtime from Terraform outputs
   database_port: "3306"
   database_name: "book_review_db"
   

@@ -667,65 +667,377 @@ jobs:
         run: |
           INGRESS_IP="${{ steps.ingress-ip.outputs.ingress_ip }}"
           NAMESPACE="book-review-${{ github.event.inputs.environment }}"
+          RESOURCE_GROUP="${{ needs.build-and-push-images.outputs.resource-group }}"
+          AKS_CLUSTER="${{ needs.build-and-push-images.outputs.aks-cluster-name }}"
+          ACR_SERVER="${{ needs.build-and-push-images.outputs.acr-login-server }}"
+          MYSQL_FQDN="${{ needs.build-and-push-images.outputs.mysql-fqdn }}"
           
-          # Generate GitHub Actions Step Summary
+          # Get deployment timestamp
+          DEPLOY_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          # Count resources
+          POD_COUNT=$(kubectl get pods -n $NAMESPACE --no-headers | wc -l)
+          RUNNING_PODS=$(kubectl get pods -n $NAMESPACE --field-selector=status.phase=Running --no-headers | wc -l)
+          
+          # Generate detailed GitHub Actions Step Summary
           cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## ✨ Deployment Complete - ${{ github.event.inputs.environment }}
+          # 🚀 Book Review Application - Deployment Summary
           
-          ### 🌐 Application Access
-          - **Frontend**: http://$INGRESS_IP
-          - **Backend API**: http://$INGRESS_IP/api
-          - **Ingress Controller**: NGINX Ingress v1.8.2
-          - **Namespace**: $NAMESPACE
+          ---
           
-          ### 📦 Deployed Images
-          - **Backend**: \`${{ needs.build-and-push-images.outputs.backend-image }}\`
-          - **Frontend**: \`${{ needs.build-and-push-images.outputs.frontend-image }}\`
+          ## 📋 Deployment Information
           
-          ### 📊 Resource Status
-          #### Pods
+          | Property | Value |
+          |----------|-------|
+          | **Environment** | \`${{ github.event.inputs.environment }}\` |
+          | **Deployment Time** | $DEPLOY_TIME |
+          | **Deployed By** | @${{ github.actor }} |
+          | **Workflow Run** | [\#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |
+          | **Git Commit** | [\`${GITHUB_SHA:0:7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |
+          
+          ---
+          
+          ## 🌐 Application Access
+          
+          ### Primary Access
+          - **🌍 Frontend Application**: http://$INGRESS_IP
+          - **🔌 Backend API**: http://$INGRESS_IP/api
+          - **📚 API Documentation**: http://$INGRESS_IP/api/docs *(if available)*
+          
+          ### Alternative Access (Port-Forward)
+          If external IP is not accessible:
+          \`\`\`bash
+          kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80
+          # Then access: http://localhost:8080
+          \`\`\`
+          
+          ---
+          
+          ## 🏗️ Infrastructure Details
+          
+          | Component | Value |
+          |-----------|-------|
+          | **Azure Region** | Australia Central |
+          | **Resource Group** | \`$RESOURCE_GROUP\` |
+          | **AKS Cluster** | \`$AKS_CLUSTER\` |
+          | **Namespace** | \`$NAMESPACE\` |
+          | **Ingress Controller** | NGINX Ingress v1.8.2 |
+          | **Ingress IP** | \`$INGRESS_IP\` |
+          | **Container Registry** | \`$ACR_SERVER\` |
+          | **MySQL Server** | \`$MYSQL_FQDN\` |
+          
+          ---
+          
+          ## 📦 Deployed Container Images
+          
+          ### Backend Service
+          \`\`\`
+          ${{ needs.build-and-push-images.outputs.backend-image }}
+          \`\`\`
+          
+          ### Frontend Service
+          \`\`\`
+          ${{ needs.build-and-push-images.outputs.frontend-image }}
+          \`\`\`
+          
+          ---
+          
+          ## 📊 Resource Status
+          
+          **Total Pods**: $POD_COUNT | **Running**: $RUNNING_PODS
+          
+          ### 🟢 Pods
           \`\`\`
           $(kubectl get pods -n $NAMESPACE -o wide)
           \`\`\`
           
-          #### Services
+          ### 🔌 Services
           \`\`\`
-          $(kubectl get svc -n $NAMESPACE)
-          \`\`\`
-          
-          #### Ingress
-          \`\`\`
-          $(kubectl get ingress -n $NAMESPACE)
+          $(kubectl get svc -n $NAMESPACE -o wide)
           \`\`\`
           
-          ### 🔧 Useful Commands
+          ### 🌐 Ingress
+          \`\`\`
+          $(kubectl get ingress -n $NAMESPACE -o wide)
+          \`\`\`
+          
+          ### ⚙️ ConfigMaps
+          \`\`\`
+          $(kubectl get configmap -n $NAMESPACE | grep book-review)
+          \`\`\`
+          
+          ### 🔐 Secrets
+          \`\`\`
+          $(kubectl get secrets -n $NAMESPACE | grep book-review)
+          \`\`\`
+          
+          ---
+          
+          ## 🔧 Management Commands
+          
+          ### Access Cluster
           \`\`\`bash
-          # View application logs
-          kubectl logs -n $NAMESPACE -l component=frontend --tail=50
-          kubectl logs -n $NAMESPACE -l component=backend --tail=50
+          # Get AKS credentials
+          az aks get-credentials \\
+            --resource-group $RESOURCE_GROUP \\
+            --name $AKS_CLUSTER \\
+            --admin
           
-          # Check Ingress status
+          # Set default namespace
+          kubectl config set-context --current --namespace=$NAMESPACE
+          \`\`\`
+          
+          ### View Logs
+          \`\`\`bash
+          # Frontend logs
+          kubectl logs -n $NAMESPACE -l component=frontend --tail=100 -f
+          
+          # Backend logs
+          kubectl logs -n $NAMESPACE -l component=backend --tail=100 -f
+          
+          # Ingress Controller logs
+          kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=100 -f
+          \`\`\`
+          
+          ### Debug Commands
+          \`\`\`bash
+          # Check pod status
+          kubectl get pods -n $NAMESPACE -o wide
+          
+          # Describe a pod (replace POD_NAME)
+          kubectl describe pod <POD_NAME> -n $NAMESPACE
+          
+          # Execute shell in pod
+          kubectl exec -it <POD_NAME> -n $NAMESPACE -- /bin/sh
+          
+          # Check Ingress details
           kubectl describe ingress book-review-ingress -n $NAMESPACE
           
-          # Port-forward for local testing
-          kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80
+          # View ConfigMap
+          kubectl get configmap book-review-config -n $NAMESPACE -o yaml
           
-          # Get kubeconfig
-          az aks get-credentials --resource-group ${{ needs.build-and-push-images.outputs.resource-group }} \\
-            --name ${{ needs.build-and-push-images.outputs.aks-cluster-name }}
+          # Test internal connectivity
+          kubectl run test-curl --rm -i --restart=Never --image=curlimages/curl -n $NAMESPACE -- curl -v http://book-review-frontend:3000
           \`\`\`
           
-          ### ⚠️ External Access Note
-          If the external IP is not accessible from your browser, verify NSG rules in the Azure Portal for the node resource group (MC_*) allow inbound traffic on ports 80, 443.
+          ### Restart Deployments
+          \`\`\`bash
+          # Restart backend
+          kubectl rollout restart deployment/book-review-backend -n $NAMESPACE
+          
+          # Restart frontend
+          kubectl rollout restart deployment/book-review-frontend -n $NAMESPACE
+          
+          # Check rollout status
+          kubectl rollout status deployment/book-review-backend -n $NAMESPACE
+          kubectl rollout status deployment/book-review-frontend -n $NAMESPACE
+          \`\`\`
+          
+          ### Scale Resources
+          \`\`\`bash
+          # Scale backend replicas
+          kubectl scale deployment/book-review-backend -n $NAMESPACE --replicas=3
+          
+          # Scale frontend replicas
+          kubectl scale deployment/book-review-frontend -n $NAMESPACE --replicas=3
+          \`\`\`
+          
+          ---
+          
+          ## 🔍 Monitoring & Troubleshooting
+          
+          ### Health Checks
+          \`\`\`bash
+          # Test frontend health
+          curl -I http://$INGRESS_IP/
+          
+          # Test backend API health
+          curl http://$INGRESS_IP/api/books
+          
+          # Test from within cluster
+          kubectl run test-health --rm -i --restart=Never --image=curlimages/curl -n $NAMESPACE -- \\
+            curl -v http://ingress-nginx-controller.ingress-nginx.svc.cluster.local/
+          \`\`\`
+          
+          ### View Events
+          \`\`\`bash
+          # Recent events in namespace
+          kubectl get events -n $NAMESPACE --sort-by='.lastTimestamp' | tail -20
+          
+          # Watch events in real-time
+          kubectl get events -n $NAMESPACE --watch
+          \`\`\`
+          
+          ### Resource Usage
+          \`\`\`bash
+          # Pod resource usage
+          kubectl top pods -n $NAMESPACE
+          
+          # Node resource usage
+          kubectl top nodes
+          \`\`\`
+          
+          ---
+          
+          ## ⚠️ Known Issues & Solutions
+          
+          ### Issue: External IP Timeout
+          **Symptom**: Cannot access http://$INGRESS_IP from browser  
+          **Solution**: Check NSG rules in Azure Portal for node resource group (MC_*)
+          \`\`\`bash
+          # Add NSG rule via Azure CLI
+          az network nsg rule create \\
+            --resource-group MC_${RESOURCE_GROUP}_${AKS_CLUSTER}_australiacentral \\
+            --nsg-name aks-agentpool-*-nsg \\
+            --name AllowIngressTraffic \\
+            --priority 100 \\
+            --source-address-prefixes Internet \\
+            --destination-port-ranges 80 443 30000-32767 \\
+            --access Allow \\
+            --protocol Tcp
+          \`\`\`
+          
+          ### Issue: Pods Not Starting
+          **Symptom**: Pods stuck in Pending or CrashLoopBackOff  
+          **Solution**: Check pod events and logs
+          \`\`\`bash
+          kubectl describe pod <POD_NAME> -n $NAMESPACE
+          kubectl logs <POD_NAME> -n $NAMESPACE --previous
+          \`\`\`
+          
+          ### Issue: Database Connection Errors
+          **Symptom**: Backend logs show MySQL connection errors  
+          **Solution**: Verify ConfigMap has correct MySQL FQDN and secrets are set
+          \`\`\`bash
+          # Check ConfigMap
+          kubectl get configmap book-review-config -n $NAMESPACE -o yaml | grep database_host
+          
+          # Verify secrets exist
+          kubectl get secret book-review-secrets -n $NAMESPACE
+          \`\`\`
+          
+          ---
+          
+          ## 📞 Support Resources
+          
+          - **Azure Portal**: [Resource Group](${{ github.server_url }}/${{ github.repository }})
+          - **GitHub Repository**: [${{ github.repository }}](${{ github.server_url }}/${{ github.repository }})
+          - **Workflow Runs**: [Actions](${{ github.server_url }}/${{ github.repository }}/actions)
+          - **Kubernetes Dashboard**: Deploy with \`kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml\`
+          
+          ---
+          
+          ## ✅ Next Steps
+          
+          1. **Verify Application Access**: Test the frontend at http://$INGRESS_IP
+          2. **Test API Endpoints**: Verify backend API at http://$INGRESS_IP/api/books
+          3. **Monitor Logs**: Check application logs for any errors
+          4. **Configure DNS**: *(Optional)* Set up custom domain name for the application
+          5. **Enable SSL/TLS**: *(Optional)* Configure HTTPS with cert-manager
+          6. **Set Up Monitoring**: *(Optional)* Configure Application Insights or Prometheus
+          
+          ---
+          
+          **📅 Deployment completed at**: $DEPLOY_TIME  
+          **🎯 Status**: ${{ job.status }}
           
           EOF
           
-          echo "════════════════════════════════════════════════════════════"
-          echo "✨ DEPLOYMENT COMPLETE - ${{ github.event.inputs.environment }}"
-          echo "════════════════════════════════════════════════════════════"
-          echo "🌐 Application URL: http://$INGRESS_IP"
-          echo "🔗 Backend API: http://$INGRESS_IP/api"
-          echo "📦 Namespace: $NAMESPACE"
+          # Detailed Console Output
           echo ""
-          echo "📊 View detailed summary in the GitHub Actions job summary above"
-          echo "════════════════════════════════════════════════════════════"
+          echo "════════════════════════════════════════════════════════════════════════"
+          echo "                    🎉 DEPLOYMENT SUCCESSFULLY COMPLETED"
+          echo "════════════════════════════════════════════════════════════════════════"
+          echo ""
+          echo "📋 DEPLOYMENT INFORMATION"
+          echo "────────────────────────────────────────────────────────────────────────"
+          echo "  Environment:        ${{ github.event.inputs.environment }}"
+          echo "  Deployment Time:    $DEPLOY_TIME"
+          echo "  Deployed By:        ${{ github.actor }}"
+          echo "  Workflow Run:       #${{ github.run_number }}"
+          echo "  Git Commit:         ${GITHUB_SHA:0:7}"
+          echo ""
+          echo "🌐 APPLICATION ACCESS"
+          echo "────────────────────────────────────────────────────────────────────────"
+          echo "  Frontend:           http://$INGRESS_IP"
+          echo "  Backend API:        http://$INGRESS_IP/api"
+          echo "  API Documentation:  http://$INGRESS_IP/api/docs"
+          echo ""
+          echo "  📌 Alternative Access (if external IP blocked):"
+          echo "     kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80"
+          echo "     Then access: http://localhost:8080"
+          echo ""
+          echo "🏗️  INFRASTRUCTURE DETAILS"
+          echo "────────────────────────────────────────────────────────────────────────"
+          echo "  Azure Region:       Australia Central"
+          echo "  Resource Group:     $RESOURCE_GROUP"
+          echo "  AKS Cluster:        $AKS_CLUSTER"
+          echo "  Namespace:          $NAMESPACE"
+          echo "  Ingress Controller: NGINX Ingress v1.8.2"
+          echo "  Ingress IP:         $INGRESS_IP"
+          echo "  Container Registry: $ACR_SERVER"
+          echo "  MySQL Server:       $MYSQL_FQDN"
+          echo ""
+          echo "📦 DEPLOYED IMAGES"
+          echo "────────────────────────────────────────────────────────────────────────"
+          echo "  Backend:  ${{ needs.build-and-push-images.outputs.backend-image }}"
+          echo "  Frontend: ${{ needs.build-and-push-images.outputs.frontend-image }}"
+          echo ""
+          echo "📊 RESOURCE STATUS"
+          echo "────────────────────────────────────────────────────────────────────────"
+          echo "  Total Pods:    $POD_COUNT"
+          echo "  Running Pods:  $RUNNING_PODS"
+          echo "  Services:      $(kubectl get svc -n $NAMESPACE --no-headers | wc -l)"
+          echo "  Ingress:       1 Active"
+          echo ""
+          echo "Pods:"
+          kubectl get pods -n $NAMESPACE -o wide
+          echo ""
+          echo "Services:"
+          kubectl get svc -n $NAMESPACE
+          echo ""
+          echo "Ingress:"
+          kubectl get ingress -n $NAMESPACE
+          echo ""
+          echo "🔧 QUICK ACCESS COMMANDS"
+          echo "────────────────────────────────────────────────────────────────────────"
+          echo "  # Get cluster credentials"
+          echo "  az aks get-credentials --resource-group $RESOURCE_GROUP --name $AKS_CLUSTER --admin"
+          echo ""
+          echo "  # View logs"
+          echo "  kubectl logs -n $NAMESPACE -l component=frontend --tail=50"
+          echo "  kubectl logs -n $NAMESPACE -l component=backend --tail=50"
+          echo ""
+          echo "  # Restart deployments"
+          echo "  kubectl rollout restart deployment/book-review-backend -n $NAMESPACE"
+          echo "  kubectl rollout restart deployment/book-review-frontend -n $NAMESPACE"
+          echo ""
+          echo "  # Test application health"
+          echo "  curl -I http://$INGRESS_IP/"
+          echo "  curl http://$INGRESS_IP/api/books"
+          echo ""
+          echo "⚠️  TROUBLESHOOTING"
+          echo "────────────────────────────────────────────────────────────────────────"
+          echo "  If external IP times out, add NSG rule:"
+          echo "  az network nsg rule create \\"
+          echo "    --resource-group MC_${RESOURCE_GROUP}_${AKS_CLUSTER}_australiacentral \\"
+          echo "    --nsg-name aks-agentpool-*-nsg \\"
+          echo "    --name AllowIngressTraffic \\"
+          echo "    --priority 100 \\"
+          echo "    --source-address-prefixes Internet \\"
+          echo "    --destination-port-ranges 80 443 30000-32767 \\"
+          echo "    --access Allow --protocol Tcp"
+          echo ""
+          echo "  Check pod status:"
+          echo "  kubectl describe pod <POD_NAME> -n $NAMESPACE"
+          echo "  kubectl logs <POD_NAME> -n $NAMESPACE"
+          echo ""
+          echo "  View events:"
+          echo "  kubectl get events -n $NAMESPACE --sort-by='.lastTimestamp' | tail -20"
+          echo ""
+          echo "════════════════════════════════════════════════════════════════════════"
+          echo "✅ Deployment Status: SUCCESS"
+          echo "📖 Full deployment summary available in GitHub Actions job summary above"
+          echo "🔗 Workflow URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "════════════════════════════════════════════════════════════════════════"
+          echo ""
