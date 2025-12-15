@@ -237,16 +237,28 @@ jobs:
         run: |
           echo "📦 Installing kubelogin for Azure AD authentication..."
           
-          # Download latest kubelogin
-          KUBELOGIN_VERSION="v0.0.34"
-          curl -LO "https://github.com/Azure/kubelogin/releases/download/${KUBELOGIN_VERSION}/kubelogin-linux-amd64.zip"
-          unzip kubelogin-linux-amd64.zip
-          sudo mv bin/linux_amd64/kubelogin /usr/local/bin/
-          sudo chmod +x /usr/local/bin/kubelogin
+          # Download and install kubelogin using the correct URL format
+          KUBELOGIN_VERSION="v0.1.4"
+          
+          # Download the zip file with error checking
+          echo "Downloading kubelogin ${KUBELOGIN_VERSION}..."
+          curl -fsSL "https://github.com/Azure/kubelogin/releases/download/${KUBELOGIN_VERSION}/kubelogin-linux-amd64.zip" -o kubelogin.zip
+          
+          # Verify the download
+          if [ ! -f kubelogin.zip ] || [ ! -s kubelogin.zip ]; then
+            echo "❌ Download failed or file is empty"
+            exit 1
+          fi
+          
+          # Unzip and install
+          unzip -o kubelogin.zip
+          sudo install -m 755 bin/linux_amd64/kubelogin /usr/local/bin/kubelogin
+          
+          # Clean up
+          rm -rf kubelogin.zip bin/
           
           # Verify installation
           kubelogin --version
-          which kubelogin
           
           echo "✅ kubelogin installed successfully"
       
