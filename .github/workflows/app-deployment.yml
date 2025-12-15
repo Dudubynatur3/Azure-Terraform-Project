@@ -199,37 +199,38 @@ jobs:
           WORKDIR /app
           COPY --from=deps /app/node_modules ./node_modules
           COPY . .
+          
+          # Set environment variables for build
+          ENV NEXT_TELEMETRY_DISABLED=1
+          ENV NODE_ENV=production
+          
+          # Build the application
           RUN npm run build
           
           FROM node:18-alpine AS runner
           WORKDIR /app
           ENV NODE_ENV=production
+          ENV NEXT_TELEMETRY_DISABLED=1
+          
           RUN addgroup --system --gid 1001 nodejs
           RUN adduser --system --uid 1001 nextjs
           
+          # Copy necessary files for runtime
+          COPY --from=builder /app/next.config.js ./
           COPY --from=builder /app/public ./public
-          COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-          COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+          COPY --from=builder /app/package.json ./package.json
+          
+          # Copy .next folder (includes all build output)
+          COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+          COPY --from=builder /app/node_modules ./node_modules
           
           USER nextjs
           EXPOSE 3000
           ENV PORT=3000
-          CMD ["node", "server.js"]
+          
+          # Start Next.js in production mode
+          CMD ["npm", "start"]
           EOF
-              
-              # Update next.config.js to enable standalone output
-              if [ -f "${{ env.FRONTEND_PATH }}/next.config.js" ]; then
-                echo "📝 Ensuring standalone output is enabled in next.config.js..."
-                # Backup original config
-                cp "${{ env.FRONTEND_PATH }}/next.config.js" "${{ env.FRONTEND_PATH }}/next.config.js.bak"
-                
-                # Check if output: 'standalone' exists
-                if ! grep -q "output.*standalone" "${{ env.FRONTEND_PATH }}/next.config.js"; then
-                  echo "Adding standalone output configuration..."
-                  # This is a simple approach - for complex configs, manual update might be needed
-                  sed -i "s/module.exports = {/module.exports = {\n  output: 'standalone',/" "${{ env.FRONTEND_PATH }}/next.config.js"
-                fi
-              fi
             else
               echo "📝 Dockerfile exists, checking if it builds Next.js..."
               # Check if Dockerfile includes build step
@@ -248,22 +249,37 @@ jobs:
           WORKDIR /app
           COPY --from=deps /app/node_modules ./node_modules
           COPY . .
+          
+          # Set environment variables for build
+          ENV NEXT_TELEMETRY_DISABLED=1
+          ENV NODE_ENV=production
+          
+          # Build the application
           RUN npm run build
           
           FROM node:18-alpine AS runner
           WORKDIR /app
           ENV NODE_ENV=production
+          ENV NEXT_TELEMETRY_DISABLED=1
+          
           RUN addgroup --system --gid 1001 nodejs
           RUN adduser --system --uid 1001 nextjs
           
+          # Copy necessary files for runtime
+          COPY --from=builder /app/next.config.js ./
           COPY --from=builder /app/public ./public
-          COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-          COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+          COPY --from=builder /app/package.json ./package.json
+          
+          # Copy .next folder (includes all build output)
+          COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+          COPY --from=builder /app/node_modules ./node_modules
           
           USER nextjs
           EXPOSE 3000
           ENV PORT=3000
-          CMD ["node", "server.js"]
+          
+          # Start Next.js in production mode
+          CMD ["npm", "start"]
           EOF
               fi
             fi
