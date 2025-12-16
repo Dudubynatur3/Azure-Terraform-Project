@@ -10,9 +10,10 @@ resource_suffix = "" # Change this to make resources unique
 address_space = ["10.10.0.0/16"]
 
 subnets = {
-  egress   = { address_prefixes = ["10.10.1.0/24"] } # Egress subnet for NAT Gateway
-  aks      = { address_prefixes = ["10.10.2.0/24"] } # Private subnet for AKS node pools
-  database = { address_prefixes = ["10.10.3.0/24"] } # Private subnet for MySQL
+  egress            = { address_prefixes = ["10.10.1.0/24"] } # Egress subnet for NAT Gateway
+  aks               = { address_prefixes = ["10.10.2.0/24"] } # Private subnet for AKS node pools
+  database          = { address_prefixes = ["10.10.3.0/24"] } # Private subnet for MySQL (reserved)
+  private-endpoints = { address_prefixes = ["10.10.4.0/24"] } # Dedicated subnet for private endpoints
 }
 
 

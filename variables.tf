@@ -71,3 +71,15 @@ variable "create_aks_admin_role_assignment" {
   description = "Whether to create AKS admin role assignment for the service principal. Set to true to allow CI/CD pipelines to manage the cluster."
   default     = true
 }
+
+variable "secondary_location" {
+  description = "Secondary Azure region for ACR geo-replication"
+  type        = string
+  default     = "eastus2"
+}
+
+variable "acr_sku" {
+  description = "SKU for Azure Container Registry. Use 'Premium' for geo-replication."
+  type        = string
+  default     = "Standard"
+}

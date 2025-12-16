@@ -6,13 +6,13 @@ metadata:
   labels:
     app: book-review
 data:
-  # Backend API endpoint for frontend (via Ingress routing)
+  # Frontend calls backend via Ingress path
   backend_api_url: "/api"
-  
+
   # Database configuration (non-sensitive)
-  database_host: "<MYSQL_FQDN>"  # will be replaced at runtime from Terraform outputs
+  database_host: "cloudproj-dev-mysql-01b0dd.mysql.database.azure.com"  # Replace at runtime from Terraform outputs
   database_port: "3306"
   database_name: "book_review_db"
-  
-  # CORS configuration (comma-separated origins)
-  allowed_origins: "http://book-review-frontend.book-review-dev.svc.cluster.local:3000,http://localhost:3000"
+
+  # CORS configuration (allow frontend access)
+  allowed_origins: "http://localhost:8080,http://20.28.58.135"

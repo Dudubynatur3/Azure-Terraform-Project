@@ -40,8 +40,11 @@ module "acr" {
   project_name            = var.project_name
   environment             = var.environment
   location                = var.location
+  secondary_location      = var.secondary_location
+  acr_sku                 = var.acr_sku
   resource_group_name     = module.network.resource_group_name
-  private_subnet_id       = lookup(module.network.subnet_ids, "aks", "")
+  private_subnet_id       = lookup(module.network.subnet_ids, "private-endpoints", "")
+  vnet_id                 = module.network.vnet_id
   enable_private_endpoint = var.create_private_endpoints
   unique_suffix           = local.unique_suffix
 }
@@ -57,7 +60,8 @@ module "keyvault" {
     environment = var.environment
     project     = var.project_name
   }
-  private_subnet_id       = lookup(module.network.subnet_ids, "aks", "")
+  private_subnet_id       = lookup(module.network.subnet_ids, "private-endpoints", "")
+  vnet_id                 = module.network.vnet_id
   enable_private_endpoint = var.create_private_endpoints
   allowed_ip_ranges       = [] # Empty list for now, can be configured per environment
 }

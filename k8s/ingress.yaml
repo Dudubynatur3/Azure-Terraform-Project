@@ -4,15 +4,13 @@ metadata:
   name: book-review-ingress
   namespace: book-review-dev
   annotations:
-    kubernetes.io/ingress.class: "nginx"           # Use NGINX Ingress Controller
-    nginx.ingress.kubernetes.io/use-regex: "true"  # Enable regex paths
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
   ingressClassName: nginx
   rules:
   - http:
       paths:
-      # Backend API routing: /api -> book-review-backend service
+      # Backend API
       - path: /api(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
@@ -20,9 +18,10 @@ spec:
             name: book-review-backend
             port:
               number: 3001
-      # Frontend routing: everything else -> book-review-frontend service
-      - path: /(.*)
-        pathType: ImplementationSpecific
+
+      # Frontend (NO rewrite)
+      - path: /
+        pathType: Prefix
         backend:
           service:
             name: book-review-frontend
