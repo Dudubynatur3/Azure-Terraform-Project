@@ -199,21 +199,48 @@ jobs:
 
         echo "Generating Frontend Dockerfile"
         cat << 'EOF' > Dockerfile.frontend
-        FROM node:18-alpine AS builder
-        WORKDIR /app
-        ARG NEXT_PUBLIC_API_URL
-        ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-        COPY package*.json ./
-        RUN npm ci --only=production || true
-        COPY . .
-        RUN npm run build
+        # ---------- Builder ----------
+         FROM node:18-alpine AS builder
 
+         WORKDIR /app
+
+         # Copy entire repo
+         COPY . .
+
+         # Detect frontend directory
+         RUN if [ -f package.json ]; then \
+           echo "✅ package.json found at root"; \
+         elif [ -f frontend/package.json ]; then \
+           echo "✅ package.json found in frontend/"; \
+           cd frontend && ln -s $(pwd) /app/frontend-app; \
+         else \
+           echo "❌ package.json not found"; exit 1; \
+         fi
+
+        # Install & build
+        RUN if [ -f package.json ]; then \
+          npm install && npm run build; \
+        else \
+          cd frontend && npm install && npm run build; \
+        fi
+
+        # ---------- Runtime ----------
         FROM node:18-alpine
+
         WORKDIR /app
+
         ENV NODE_ENV=production
-        COPY --from=builder /app ./
+
+        # Copy build output
+        COPY --from=builder /app/.next ./.next
+        COPY --from=builder /app/public ./public
+        COPY --from=builder /app/package.json ./package.json
+        COPY --from=builder /app/node_modules ./node_modules
+
         EXPOSE 3000
-        CMD ["npx", "next", "start", "-p", "3000", "-H", "0.0.0.0"]
+
+         CMD ["npx", "next", "start", "-p", "3000", "-H", "0.0.0.0"]
+
         EOF
 
 
