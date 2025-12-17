@@ -183,7 +183,7 @@ jobs:
     # ─────────────────────────────────────────────
     # Auto-generate Dockerfiles
     # ─────────────────────────────────────────────
-    - name: Auto-generate Dockerfiles
+    - name: Generate Backend Dockerfile
       run: |
         echo "Generating Backend Dockerfile"
         cat << 'EOF' > Dockerfile.backend
@@ -197,8 +197,18 @@ jobs:
         CMD ["node", "index.js"]
         EOF
 
-        echo "Generating Frontend Dockerfile"
-        mkdir -p ${{ env.FRONTEND_PATH }}
+    - name: Generate Frontend Dockerfile
+      env:
+         NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+      run: |
+          # Check if frontend directory exists
+          if [ ! -d "${{ env.FRONTEND_PATH }}" ]; then
+            echo "⚠️ Frontend directory not found at ${{ env.FRONTEND_PATH }}"
+            if [ ! -f Dockerfile ]; then
+              echo "❌ Dockerfile missing — failing build"
+              exit 1
+            fi
+            mkdir -p ${{ env.FRONTEND_PATH }}
             cat > ${{ env.FRONTEND_PATH }}/Dockerfile <<EOF
           FROM nginx:alpine
           COPY . /usr/share/nginx/html
