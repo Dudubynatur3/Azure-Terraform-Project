@@ -36,15 +36,22 @@ env:
   FRONTEND_PATH: ./book-review-app/frontend
   BACKEND_PATH: ./book-review-app/backend
   K8S_PATH: ./k8s
+  NAMESPACE: book-review-${{ github.event.inputs.environment }}
   
 
 jobs:
-  deploy-app:
-    name: Build & Deploy Application
+  build-and-push-images:
+    name: Build & Push Container Images
     runs-on: ubuntu-latest
     env:
-      NAMESPACE: book-review-${{ github.event.inputs.environment }}
       environment: ${{ github.event.inputs.environment }}
+
+    outputs:
+      acr-name: ${{ steps.get-infra.outputs.acr-name }}
+      acr-login-server: ${{ steps.get-infra.outputs.acr-login-server }}
+      aks-cluster-name: ${{ steps.get-infra.outputs.aks-cluster-name }}
+      resource-group: ${{ steps.get-infra.outputs.resource-group }}
+      mysql-fqdn: ${{ steps.get-infra.outputs.mysql-fqdn }}
 
     steps:
     # ─────────────────────────────────────────────
@@ -53,6 +60,88 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+   
+
+    # ─────────────────────────────────────────────
+    # Download Terraform Outputs
+    # ─────────────────────────────────────────────
+    - name: Download Terraform State
+      uses: actions/download-artifact@v4
+      with:
+         name: terraform-state-${{ github.event.inputs.environment }}
+         github-token: ${{ secrets.GITHUB_TOKEN }}
+         run-id: ${{ github.event.inputs.run_id }}
+         repository: ${{ github.repository }}
+
+    - name: Fetch Application Code from Repository
+      run: |
+          APP_REPO="${{ github.event.inputs.app_repository || 'pravinmishraaws/book-review-app' }}"
+          APP_BRANCH="${{ github.event.inputs.app_branch || 'main' }}"
+          
+          echo "📥 Fetching application code from repository..."
+          echo "Repository: $APP_REPO"
+          echo "Branch: $APP_BRANCH"
+          
+          # Clone the application repository
+          git clone --branch $APP_BRANCH --depth 1 \
+            https://github.com/$APP_REPO.git book-review-app
+          
+          echo "✅ Application code fetched successfully"
+          echo "📁 Directory structure:"
+          ls -la book-review-app/
+
+    - name: Verify Application Structure
+      run: |
+          echo "🔍 Verifying application structure..."
+          
+          if [ -d "${{ env.BACKEND_PATH }}" ]; then
+            echo "✅ Backend directory found"
+            ls -la ${{ env.BACKEND_PATH }}/
+          else
+            echo "⚠️ Backend directory not found at ${{ env.BACKEND_PATH }}"
+          fi
+          
+          if [ -d "${{ env.FRONTEND_PATH }}" ]; then
+            echo "✅ Frontend directory found"
+            ls -la ${{ env.FRONTEND_PATH }}/
+          else
+            echo "⚠️ Frontend directory not found at ${{ env.FRONTEND_PATH }}"
+          fi
+
+    # ─────────────────────────────────────────────
+    # Extract Infrastructure Values
+    # ─────────────────────────────────────────────
+    - name: Extract Infrastructure Details from Terraform
+      id: get-infra
+      run: |
+          echo "📋 Extracting infrastructure details from Terraform outputs..."
+          
+          # Parse terraform outputs JSON
+          ACR_NAME=$(jq -r '.acr_name.value' terraform-outputs.json)
+          ACR_LOGIN_SERVER=$(jq -r '.acr_login_server.value' terraform-outputs.json)
+          AKS_CLUSTER_NAME=$(jq -r '.aks_cluster_name.value' terraform-outputs.json)
+          RESOURCE_GROUP=$(jq -r '.resource_group_name.value' terraform-outputs.json)
+          MYSQL_FQDN=$(jq -r '.mysql_fqdn.value' terraform-outputs.json)
+          
+          # Validate extracted values
+          if [ -z "$ACR_NAME" ] || [ "$ACR_NAME" == "null" ]; then
+            echo "❌ Error: ACR name not found in Terraform outputs"
+            exit 1
+          fi
+          
+          # Export to outputs
+          echo "acr-name=$ACR_NAME" >> $GITHUB_OUTPUT
+          echo "acr-login-server=$ACR_LOGIN_SERVER" >> $GITHUB_OUTPUT
+          echo "aks-cluster-name=$AKS_CLUSTER_NAME" >> $GITHUB_OUTPUT
+          echo "resource-group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
+          echo "mysql-fqdn=$MYSQL_FQDN" >> $GITHUB_OUTPUT
+          
+          echo "✅ Infrastructure Details:"
+          echo "  ACR: $ACR_NAME ($ACR_LOGIN_SERVER)"
+          echo "  AKS: $AKS_CLUSTER_NAME"
+          echo "  RG: $RESOURCE_GROUP"
+          echo "  MySQL: $MYSQL_FQDN"
+    
     # ─────────────────────────────────────────────
     # Azure Login
     # ─────────────────────────────────────────────
@@ -61,32 +150,6 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    # ─────────────────────────────────────────────
-    # Download Terraform Outputs
-    # ─────────────────────────────────────────────
-    - name: Download Terraform outputs
-      uses: actions/download-artifact@v4
-      with:
-        name: terraform-outputs
-        path: ./terraform
-
-    # ─────────────────────────────────────────────
-    # Extract Infrastructure Values
-    # ─────────────────────────────────────────────
-    - name: Get infrastructure values
-      id: get-infra
-      run: |
-        set -e
-
-        ACR_LOGIN_SERVER=$(jq -r '.acr_login_server.value' terraform/outputs.json)
-        AKS_CLUSTER=$(jq -r '.aks_cluster_name.value' terraform/outputs.json)
-        RESOURCE_GROUP=$(jq -r '.resource_group_name.value' terraform/outputs.json)
-        MYSQL_FQDN=$(jq -r '.mysql_fqdn.value' terraform/outputs.json)
-
-        echo "acr-login-server=$ACR_LOGIN_SERVER" >> $GITHUB_OUTPUT
-        echo "aks-cluster=$AKS_CLUSTER" >> $GITHUB_OUTPUT
-        echo "resource-group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
-        echo "mysql-fqdn=$MYSQL_FQDN" >> $GITHUB_OUTPUT
 
     # ─────────────────────────────────────────────
     # AKS Credentials
@@ -95,7 +158,7 @@ jobs:
       run: |
         az aks get-credentials \
           --resource-group ${{ steps.get-infra.outputs.resource-group }} \
-          --name ${{ steps.get-infra.outputs.aks-cluster }} \
+          --name ${{ steps.get-infra.outputs.aks-cluster-name }} \
           --admin \
           --overwrite-existing
 
@@ -176,77 +239,201 @@ jobs:
           -f Dockerfile.frontend .
 
         docker push ${{ steps.get-infra.outputs.acr-login-server }}/book-review-frontend:${{ github.event.inputs.frontend_image_tag }}
+   
+    - name: Verify Images in ACR
+      run: |
+          echo "📦 Verifying images in ACR..."
+          az acr repository show-tags --name ${{ steps.get-infra.outputs.acr-name }} --repository book-review-backend
+          az acr repository show-tags --name ${{ steps.get-infra.outputs.acr-name }} --repository book-review-frontend
 
+  deploy-to-aks:
+    name: Deploy to AKS
+    runs-on: ubuntu-latest
+    needs: build-and-push-images
+    env:
+      environment: ${{ github.event.inputs.environment }}
+
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Assign AKS Cluster Admin Role
+        run: |
+          echo "🔐 Ensuring service principal has AKS admin access..."
+          
+          # Get the service principal object ID
+          SP_OBJECT_ID=$(az ad sp show --id ${{ secrets.AZURE_CLIENT_ID }} --query id -o tsv)
+          
+          # Get AKS resource ID
+          AKS_ID=$(az aks show \
+            --resource-group ${{ needs.build-and-push-images.outputs.resource-group }} \
+            --name ${{ needs.build-and-push-images.outputs.aks-cluster-name }} \
+            --query id -o tsv)
+          
+          # Assign Azure Kubernetes Service Cluster Admin Role
+          az role assignment create \
+            --assignee $SP_OBJECT_ID \
+            --role "Azure Kubernetes Service Cluster Admin Role" \
+            --scope $AKS_ID \
+            2>/dev/null || echo "Role assignment already exists or not needed"
+          
+          echo "✅ Role assignment complete"
+      
+      
+      - name: Get AKS Credentials
+        run: |
+          echo "✅ Using infrastructure details from Terraform:"
+          echo "  AKS: ${{ needs.build-and-push-images.outputs.aks-cluster-name }}"
+          echo "  Resource Group: ${{ needs.build-and-push-images.outputs.resource-group }}"
+          
+          # Get AKS credentials with admin access (uses cluster certificates)
+          # This bypasses Azure RBAC and works with service principal authentication
+          az aks get-credentials \
+            --resource-group ${{ needs.build-and-push-images.outputs.resource-group }} \
+            --name ${{ needs.build-and-push-images.outputs.aks-cluster-name }} \
+            --admin \
+            --overwrite-existing
+          
+          echo "✅ AKS credentials configured successfully with admin access"
+
+      
     # ─────────────────────────────────────────────
     # Update ConfigMap (DB Host from Terraform)
     # ─────────────────────────────────────────────
-    - name: Update ConfigMap
-      run: |
-        sed -i "s|<MYSQL_FQDN>|${{ steps.get-infra.outputs.mysql-fqdn }}|g" k8s/configmap.yaml
-        kubectl apply -f k8s/configmap.yaml
+      - name: Update ConfigMap
+        run: |
+          sed -i "s|<MYSQL_FQDN>|${{ needs.build-and-push-images.outputs.mysql-fqdn }}|g" k8s/configmap.yaml
+          kubectl apply -f k8s/configmap.yaml
+
+      - name: Set MySQL FQDN
+        id: get-mysql
+        run: |
+          MYSQL_FQDN="${{ needs.build-and-push-images.outputs.mysql-fqdn }}"
+          echo "mysql-fqdn=$MYSQL_FQDN" >> $GITHUB_OUTPUT
+          echo "✅ MySQL FQDN from Terraform: $MYSQL_FQDN"
+      
+
+      - name: Update Kubernetes Manifests
+        run: |
+          # Extract ACR name from login server
+          ACR_NAME=$(echo "${{ needs.build-and-push-images.outputs.acr-login-server }}" | cut -d'.' -f1)
+          MYSQL_FQDN="${{ steps.get-mysql.outputs.mysql-fqdn }}"
+          
+          echo "🔄 Updating manifests with actual values..."
+          echo "  ACR: $ACR_NAME"
+          echo "  MySQL FQDN: $MYSQL_FQDN"
+          
+          if [ -z "$MYSQL_FQDN" ] || [ "$MYSQL_FQDN" == "null" ]; then
+            echo "❌ ERROR: MYSQL_FQDN is empty or null!"
+            exit 1
+          fi
+        
+          # Update ConfigMap with MySQL FQDN - use explicit string
+          sed -i "s|database_host: \"<MYSQL_FQDN>\"|database_host: \"$MYSQL_FQDN\"|g" \
+            ${{ env.K8S_PATH }}/configmaps/app-config.yaml  
+        
+          # Verify replacements
+          echo ""
+          echo "📋 Verification - ConfigMap database_host:"
+          grep "database_host:" ${{ env.K8S_PATH }}/configmaps/app-config.yaml
+          
+          echo ""
+          echo "📋 Verification - Backend image:"
+          grep "image:" ${{ env.K8S_PATH }}/deployments/backend-deployment.yaml | head -1
+          
+          # Check if placeholder still exists
+          if grep -q "<MYSQL_FQDN>" ${{ env.K8S_PATH }}/configmaps/app-config.yaml; then
+            echo "❌ ERROR: MYSQL_FQDN placeholder not replaced!"
+            cat ${{ env.K8S_PATH }}/configmaps/app-config.yaml
+            exit 1
+          fi
+          
+          echo "✅ Kubernetes manifests updated successfully"
+      
+      - name: Create Kubernetes Namespace
+        run: |
+          kubectl create namespace ${{  env.NAMESPACE}} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl config set-context --current --namespace=${{ env.NAMESPACE }}
+
+      - name: Create Kubernetes Secrets
+        run: |
+          # Create or update database credentials and JWT secret
+          kubectl create secret generic book-review-secrets \
+            --from-literal=database_user=${{ secrets.MYSQL_ADMIN_USERNAME }} \
+            --from-literal=database_password=${{ secrets.MYSQL_ADMIN_PASSWORD }} \
+            --from-literal=jwt_secret=${{ secrets.JWT_SECRET }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+          
+          echo "✅ Secrets created/updated"
 
     # ─────────────────────────────────────────────
     # Deploy Backend
     # ─────────────────────────────────────────────
-    - name: Deploy Backend
-      run: |
-        sed -i "s|<ACR_NAME>|$(echo '${{ steps.get-infra.outputs.acr-login-server }}' | cut -d'.' -f1)|g" k8s/backend-deployment.yaml
-        kubectl apply -f k8s/backend-deployment.yaml
-        kubectl rollout restart deployment/book-review-backend -n $NAMESPACE
+      - name: Deploy Backend
+        run: |
+          sed -i "s|<ACR_NAME>|$(echo '${{ needs.build-and-push-images.outputs.acr-login-server }}' | cut -d'.' -f1)|g" k8s/backend-deployment.yaml
+          kubectl apply -f k8s/backend-deployment.yaml
+          kubectl rollout restart deployment/book-review-backend -n $NAMESPACE
 
     # ─────────────────────────────────────────────
     # Deploy Frontend
     # ─────────────────────────────────────────────
-    - name: Deploy Frontend
-      run: |
-        sed -i "s|<ACR_NAME>|$(echo '${{ steps.get-infra.outputs.acr-login-server }}' | cut -d'.' -f1)|g" k8s/frontend-deployment.yaml
-        kubectl apply -f k8s/frontend-deployment.yaml
-        kubectl rollout restart deployment/book-review-frontend -n $NAMESPACE
+      - name: Deploy Frontend
+        run: |
+          sed -i "s|<ACR_NAME>|$(echo '${{ needs.build-and-push-images.outputs.acr-login-server }}' | cut -d'.' -f1)|g" k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl rollout restart deployment/book-review-frontend -n $NAMESPACE
 
     # ─────────────────────────────────────────────
     # Deploy Services & Ingress
     # ─────────────────────────────────────────────
-    - name: Deploy Services & Ingress
-      run: |
-        kubectl apply -f k8s/services/backend-service.yaml
-        kubectl apply -f k8s/services/frontend-service.yaml
-        kubectl apply -f k8s/ingress.yaml
+      - name: Deploy Services & Ingress
+        run: |
+          kubectl apply -f k8s/services/backend-service.yaml
+          kubectl apply -f k8s/services/frontend-service.yaml
+          kubectl apply -f k8s/ingress.yaml
 
     # ─────────────────────────────────────────────
     # Wait for Ingress IP
     # ─────────────────────────────────────────────
-    - name: Wait for Ingress IP
-      run: |
-        echo "Waiting for Ingress external IP..."
-        for i in {1..30}; do
+      - name: Wait for Ingress IP
+        run: |
+          echo "Waiting for Ingress external IP..."
+          for i in {1..30}; do
           INGRESS_IP=$(kubectl get ingress book-review-ingress -n $NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
           if [ -n "$INGRESS_IP" ]; then
             echo "INGRESS_IP=$INGRESS_IP" >> $GITHUB_ENV
             break
           fi
           sleep 10
-        done
+          done
 
     # ─────────────────────────────────────────────
     # Deployment Summary
     # ─────────────────────────────────────────────
-    - name: Deployment Summary
-      run: |
-        DEPLOY_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+      - name: Deployment Summary
+        run: |
+          DEPLOY_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
 
-        echo ""
-        echo "════════════════════════════════════════════════════════════════════════"
-        echo "🎉 DEPLOYMENT SUCCESSFULLY COMPLETED"
-        echo "════════════════════════════════════════════════════════════════════════"
-        echo ""
-        echo "Frontend:  http://$INGRESS_IP"
-        echo "Backend:   http://$INGRESS_IP/api"
-        echo ""
-        echo "AKS Cluster:    ${{ steps.get-infra.outputs.aks-cluster }}"
-        echo "Resource Group:${{ steps.get-infra.outputs.resource-group }}"
-        echo "Namespace:     $NAMESPACE"
-        echo "MySQL Server:  ${{ steps.get-infra.outputs.mysql-fqdn }}"
-        echo ""
-        kubectl get pods -n $NAMESPACE
-        kubectl get svc -n $NAMESPACE
-        kubectl get ingress -n $NAMESPACE
+          echo ""
+          echo "════════════════════════════════════════════════════════════════════════"
+          echo "🎉 DEPLOYMENT SUCCESSFULLY COMPLETED"
+          echo "════════════════════════════════════════════════════════════════════════"
+          echo ""
+          echo "Frontend:  http://$INGRESS_IP"
+          echo "Backend:   http://$INGRESS_IP/api"
+          echo ""
+          echo "AKS Cluster:    ${{ needs.build-and-push-images.outputs.aks-cluster-name }}"
+          echo "Resource Group:${{ needs.build-and-push-images.outputs.resource-group }}"
+          echo "Namespace:     $NAMESPACE"
+          echo "MySQL Server:  ${{ needs.build-and-push-images.outputs.mysql-fqdn }}"
+          echo ""
+          kubectl get pods -n $NAMESPACE
+          kubectl get svc -n $NAMESPACE
+          kubectl get ingress -n $NAMESPACE
