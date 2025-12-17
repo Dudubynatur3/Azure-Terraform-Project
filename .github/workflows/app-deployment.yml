@@ -1,34 +1,50 @@
-name: Deploy Book Review Application
+name: Application Deployment
 
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Deployment environment"
+        description: 'Deployment Environment'
         required: true
-        default: dev
         type: choice
         options:
           - dev
-          - staging
+          - stage
           - prod
       frontend_image_tag:
         description: "Frontend image tag"
-        required: true
+        required: false
         default: latest
       backend_image_tag:
         description: "Backend image tag"
-        required: true
+        required: false
         default: latest
+      run_id:
+        description: Terraform workflow run ID
+        required: true
+      app_repository:
+        description: Application repository
+        required: false
+        default: pravinmishraaws/book-review-app
+      app_branch:
+        description: Application Repository Branch
+        required: false
+        default: main
 
 env:
-  NAMESPACE: book-review-dev
   AZURE_REGION: australiacentral
+  FRONTEND_PATH: ./book-review-app/frontend
+  BACKEND_PATH: ./book-review-app/backend
+  K8S_PATH: ./k8s
+  
 
 jobs:
   deploy-app:
     name: Build & Deploy Application
     runs-on: ubuntu-latest
+    env:
+      NAMESPACE: book-review-${{ github.event.inputs.environment }}
+      environment: ${{ github.event.inputs.environment }}
 
     steps:
     # ─────────────────────────────────────────────
