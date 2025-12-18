@@ -21,7 +21,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: backend
-          image: <ACR_LOGIN_SERVER>/book-review-backend:${IMAGE_TAG}
+          image: <ACR_LOGIN_SERVER>/book-review-backend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3001
