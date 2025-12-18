@@ -71,6 +71,7 @@ jobs:
           echo "aks-cluster-name=$AKS_CLUSTER_NAME" >> $GITHUB_OUTPUT
           echo "resource-group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
           echo "mysql-fqdn=$MYSQL_FQDN" >> $GITHUB_OUTPUT
+          echo "acr-name=$ACR_NAME" >> $GITHUB_OUTPUT
 
       - name: Azure Login with Service Principal
         uses: azure/login@v1
