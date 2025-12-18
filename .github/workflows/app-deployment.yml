@@ -73,6 +73,8 @@ jobs:
           echo "mysql-fqdn=$MYSQL_FQDN" >> $GITHUB_OUTPUT
           echo "acr-name=$ACR_NAME" >> $GITHUB_OUTPUT
 
+          
+
       - name: Azure Login with Service Principal
         uses: azure/login@v1
         with:
@@ -96,6 +98,7 @@ jobs:
           docker push $BACKEND_IMAGE
           echo "backend-image=$BACKEND_IMAGE" >> $GITHUB_OUTPUT
 
+
       - name: Build & Push Frontend Image
         id: build-frontend
         run: |
@@ -104,6 +107,12 @@ jobs:
           docker build -t $FRONTEND_IMAGE -f ./docker/frontend.Dockerfile ./app
           docker push $FRONTEND_IMAGE
           echo "frontend-image=$FRONTEND_IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Verify Images in ACR
+        run: |
+          echo "📦 Verifying images in ACR..."
+          az acr repository show-tags --name ${{ steps.get-infra.outputs.acr-name }} --repository book-review-backend
+          az acr repository show-tags --name ${{ steps.get-infra.outputs.acr-name }} --repository book-review-frontend
 
   deploy-to-aks:
     name: Deploy to AKS
@@ -129,14 +138,48 @@ jobs:
 
       - name: Update Kubernetes Manifests
         run: |
-          BACKEND_IMAGE="${{ needs.build-and-push.outputs.backend-image }}"
-          FRONTEND_IMAGE="${{ needs.build-and-push.outputs.frontend-image }}"
+          # Extract ACR name from login server
+          ACR_NAME=$(echo "${{ needs.build-and-push.outputs.acr-login-server }}" | cut -d'.' -f1)
           MYSQL_FQDN="${{ needs.build-and-push.outputs.mysql-fqdn }}"
-
-          sed -i "s|<ACR_LOGIN_SERVER>/book-review-backend:latest|$BACKEND_IMAGE|g" ${{ env.K8S_PATH }}/deployments/backend-deployment.yaml
-          sed -i "s|<ACR_LOGIN_SERVER>/book-review-frontend:latest|$FRONTEND_IMAGE|g" ${{ env.K8S_PATH }}/deployments/frontend-deployment.yaml
-          sed -i "s|database_host: .*|database_host: \"$MYSQL_FQDN\"|g" ${{ env.K8S_PATH }}/configmaps/app-config.yaml
-
+          
+          echo "🔄 Updating manifests with actual values..."
+          echo "  ACR: $ACR_NAME"
+          echo "  MySQL FQDN: $MYSQL_FQDN"
+          
+          if [ -z "$MYSQL_FQDN" ] || [ "$MYSQL_FQDN" == "null" ]; then
+            echo "❌ ERROR: MYSQL_FQDN is empty or null!"
+            exit 1
+          fi
+          
+          # Update backend deployment
+          sed -i "s|<ACR_NAME>\.azurecr\.io/book-review-backend:latest|${{ needs.build-and-push.outputs.backend-image }}|g" \
+            ${{ env.K8S_PATH }}/deployments/backend-deployment.yaml
+          
+          # Update frontend deployment  
+          sed -i "s|<ACR_NAME>\.azurecr\.io/book-review-frontend:latest|${{ needs.build-and-push.outputs.frontend-image }}|g" \
+            ${{ env.K8S_PATH }}/deployments/frontend-deployment.yaml
+          
+          # Update ConfigMap with MySQL FQDN - use explicit string
+          sed -i "s|database_host: \"<MYSQL_FQDN>\"|database_host: \"$MYSQL_FQDN\"|g" \
+            ${{ env.K8S_PATH }}/configmaps/app-config.yaml
+          
+          # Verify replacements
+          echo ""
+          echo "📋 Verification - ConfigMap database_host:"
+          grep "database_host:" ${{ env.K8S_PATH }}/configmaps/app-config.yaml
+          
+          echo ""
+          echo "📋 Verification - Backend image:"
+          grep "image:" ${{ env.K8S_PATH }}/deployments/backend-deployment.yaml | head -1
+          
+          # Check if placeholder still exists
+          if grep -q "<MYSQL_FQDN>" ${{ env.K8S_PATH }}/configmaps/app-config.yaml; then
+            echo "❌ ERROR: MYSQL_FQDN placeholder not replaced!"
+            cat ${{ env.K8S_PATH }}/configmaps/app-config.yaml
+            exit 1
+          fi
+          
+          echo "✅ Kubernetes manifests updated successfully"
       - name: Create Namespace
         run: |
           kubectl create namespace book-review-${{ github.event.inputs.environment }} --dry-run=client -o yaml | kubectl apply -f -
