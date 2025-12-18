@@ -12,13 +12,7 @@ spec:
     app: book-review
     component: frontend
   ports:
-  - port: 3000
-    targetPort: 3000
-    protocol: TCP
-    name: http
-
-labels:
-  app.kubernetes.io/name: book-review-frontend
-  app.kubernetes.io/component: frontend
-  app.kubernetes.io/instance: book-review
-  
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP

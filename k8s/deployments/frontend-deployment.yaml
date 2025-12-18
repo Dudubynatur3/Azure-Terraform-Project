@@ -21,8 +21,8 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
-          image: cloudprojdevacr01b0dd.azurecr.io/book-review-frontend:latest
-          imagePullPolicy: Always
+          image: cloudprojdevacr01b0dd.azurecr.io/book-review-frontend:${{IMAGE_TAG}}
+          imagePullPolicy: IfNotPresent
 
           ports:
             - containerPort: 3000
@@ -31,8 +31,6 @@ spec:
           env:
             - name: NODE_ENV
               value: "production"
-
-            # 👇 MUST be ingress-based (browser-safe)
             - name: NEXT_PUBLIC_API_URL
               value: "/api"
 

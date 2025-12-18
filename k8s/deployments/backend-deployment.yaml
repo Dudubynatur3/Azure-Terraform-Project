@@ -22,8 +22,8 @@ spec:
 
       containers:
         - name: backend
-          image: cloudprojdevacr01b0dd.azurecr.io/book-review-backend:__IMAGE_TAG__
-          imagePullPolicy: Always
+          image: cloudprojdevacr01b0dd.azurecr.io/book-review-backend:${{IMAGE_TAG}}
+          imagePullPolicy: IfNotPresent
 
           ports:
             - name: http
