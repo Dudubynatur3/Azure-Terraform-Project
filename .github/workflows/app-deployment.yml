@@ -313,8 +313,8 @@ jobs:
       - name: Validate NEXT_PUBLIC_API_URL in Dockerfile
         run: |
           echo "🔍 Validating NEXT_PUBLIC_API_URL in Dockerfile..."
-          env: 
-            NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+        
+          export NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
           
           if [ -z "$NEXT_PUBLIC_API_URL" ]; then
             echo "❌ NEXT_PUBLIC_API_URL secret is not set!"
