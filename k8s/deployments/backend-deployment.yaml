@@ -22,7 +22,7 @@ spec:
       containers:
         - name: backend
           image: <ACR_LOGIN_SERVER>/book-review-backend:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 3001
               name: http
