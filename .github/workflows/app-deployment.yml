@@ -88,7 +88,7 @@ jobs:
         run: |
           BACKEND_IMAGE="${{ steps.get-infra.outputs.acr-login-server }}/book-review-backend:${{ github.event.inputs.backend_image_tag }}"
           echo "Building backend image: $BACKEND_IMAGE"
-          docker build -t $BACKEND_IMAGE -f ./docker/backend.Dockerfile ./app/backend
+          docker build -t $BACKEND_IMAGE -f ./docker/backend.Dockerfile ./app
           docker push $BACKEND_IMAGE
           echo "backend-image=$BACKEND_IMAGE" >> $GITHUB_OUTPUT
 
@@ -97,7 +97,7 @@ jobs:
         run: |
           FRONTEND_IMAGE="${{ steps.get-infra.outputs.acr-login-server }}/book-review-frontend:${{ github.event.inputs.frontend_image_tag }}"
           echo "Building frontend image: $FRONTEND_IMAGE"
-          docker build -t $FRONTEND_IMAGE -f ./docker/frontend.Dockerfile ./app/frontend
+          docker build -t $FRONTEND_IMAGE -f ./docker/frontend.Dockerfile ./app
           docker push $FRONTEND_IMAGE
           echo "frontend-image=$FRONTEND_IMAGE" >> $GITHUB_OUTPUT
 
