@@ -185,11 +185,11 @@ jobs:
           fi
           
           # Update backend deployment
-          sed -i "s|<ACR_NAME>\.azurecr\.io/book-review-backend:latest|${{ needs.build-and-push-images.outputs.backend-image }}|g" \
+          sed -i "s|<ACR_NAME>/book-review-backend:latest|${{ needs.build-and-push-images.outputs.backend-image }}|g" \
             ${{ env.K8S_PATH }}/deployments/backend-deployment.yaml
           
           # Update frontend deployment  
-          sed -i "s|<ACR_NAME>\.azurecr\.io/book-review-frontend:latest|${{ needs.build-and-push-images.outputs.frontend-image }}|g" \
+          sed -i "s|<ACR_NAME>/book-review-frontend:latest|${{ needs.build-and-push-images.outputs.frontend-image }}|g" \
             ${{ env.K8S_PATH }}/deployments/frontend-deployment.yaml
           
           # Update ConfigMap with MySQL FQDN - use explicit string
