@@ -8,7 +8,7 @@ WORKDIR /app
 # Copy package files first (layer caching)
 COPY package*.json ./
 
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Copy application source
 COPY . .
@@ -20,4 +20,4 @@ USER appuser
 
 EXPOSE 3001
 
-CMD ["node", "index.js"]
+CMD ["node", "server.js"]
