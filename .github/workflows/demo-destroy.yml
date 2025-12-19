@@ -214,9 +214,9 @@ jobs:
           echo "🗑️ Starting infrastructure destruction..."
           terraform apply -auto-approve destroy-plan
           
-          helm uninstall kube-prometheus-stack -n monitoring || true
-          kubectl delete ns monitoring --ignore-not-found
-          
+          # helm uninstall kube-prometheus-stack -n monitoring || true
+          # kubectl delete ns monitoring --ignore-not-found
+
           echo "✅ Infrastructure destroyed successfully"
 
       
