@@ -544,7 +544,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "✅ *Application Deployment Successful!*\n\n*Project:* Book Review Platform\n*Environment:* ${{ github.event.inputs.environment || 'dev' }}\n*Workflow:* ${{ github.workflow }}\n*Run ID:* ${{ github.run_id }}\n\n🌐 *Application Access:*\n• Frontend: https://app.berryexcel.online\n• Backend API: https://app.berryexcel.online/api\n\n🟢 Deployment completed successfully on AKS."
+              "text": "✅ *Application Deployment Successful!*\n\n*Project:* Book Review Platform\n*Environment:* ${{ github.event.inputs.environment || 'dev' }}\n*Workflow:* ${{ github.workflow }}\n*Run ID:* ${{ github.run_id }}\n\n🌐 *Application Access:*\n• Frontend: http://app.berryexcel.online\n• Backend API: http://app.berryexcel.online/api\n\n🟢 Deployment completed successfully on AKS."
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
